@@ -1,0 +1,296 @@
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException,
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { Job, JobInputSource, JobStatus } from "@prisma/client";
+import { PrismaService } from "../infrastructure/prisma/prisma.service";
+import { S3Service } from "../infrastructure/storage/s3.service";
+import { ListJobsQueryDto } from "./dto/list-jobs-query.dto";
+import { UploadJobDto } from "./dto/upload-job.dto";
+
+type UploadedFile = {
+  originalname: string;
+  mimetype: string;
+  buffer: Buffer;
+};
+
+type JobUploadFiles = {
+  paciFile?: UploadedFile[];
+  planningFile?: UploadedFile[];
+};
+
+@Injectable()
+export class JobsService {
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly s3Service: S3Service,
+    private readonly configService: ConfigService,
+  ) {}
+
+  async createUploadJob(
+    userId: string,
+    dto: UploadJobDto,
+    files: JobUploadFiles,
+  ): Promise<{ jobId: string; status: JobStatus }> {
+    const prompt = dto.prompt.trim();
+
+    if (!prompt) {
+      throw new BadRequestException("Prompt is required.");
+    }
+
+    const planningFile = files.planningFile?.[0];
+    const paciFile = files.paciFile?.[0];
+
+    if (!planningFile) {
+      throw new BadRequestException("Planning file is required.");
+    }
+
+    const paciPayload = this.resolvePaciPayload(dto.paciJson, paciFile);
+    const planningPayload = this.resolveDocumentPayload(
+      planningFile,
+      "Planning file",
+    );
+
+    const job = await this.prismaService.job.create({
+      data: {
+        userId,
+        status: JobStatus.pending,
+        inputSource: paciPayload.inputSource,
+        prompt,
+        paciObjectKey: paciPayload.objectKey,
+        paciFileName: paciPayload.fileName,
+        paciContentType: paciPayload.contentType,
+        planningObjectKey: planningPayload.objectKey,
+        planningFileName: planningPayload.fileName,
+        planningContentType: planningPayload.contentType,
+      },
+    });
+
+    try {
+      await this.s3Service.uploadObject({
+        key: this.prefixedKey(job.id, paciPayload.objectKey),
+        body: paciPayload.body,
+        contentType: paciPayload.contentType,
+      });
+
+      await this.s3Service.uploadObject({
+        key: this.prefixedKey(job.id, planningPayload.objectKey),
+        body: planningPayload.body,
+        contentType: planningPayload.contentType,
+      });
+
+      return { jobId: job.id, status: JobStatus.pending };
+    } catch (error: unknown) {
+      await this.prismaService.job.update({
+        where: { id: job.id },
+        data: {
+          status: JobStatus.error,
+          errorMessage:
+            error instanceof Error ? error.message : "Error uploading files to S3.",
+        },
+      });
+
+      throw error instanceof Error
+        ? error
+        : new Error("Unexpected error creating job upload.");
+    }
+  }
+
+  async findJobsByUser(
+    userId: string,
+    query: ListJobsQueryDto,
+  ): Promise<{
+    items: Array<{
+      id: string;
+      status: JobStatus;
+      inputSource: JobInputSource;
+      prompt: string;
+      createdAt: Date;
+      updatedAt: Date;
+      errorMessage: string | null;
+    }>;
+    page: number;
+    limit: number;
+    total: number;
+  }> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const [total, jobs] = await Promise.all([
+      this.prismaService.job.count({ where: { userId } }),
+      this.prismaService.job.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          status: true,
+          inputSource: true,
+          prompt: true,
+          createdAt: true,
+          updatedAt: true,
+          errorMessage: true,
+        },
+      }),
+    ]);
+
+    return { items: jobs, page, limit, total };
+  }
+
+  async findJobStatus(userId: string, jobId: string): Promise<Job> {
+    const job = await this.findOwnedJob(userId, jobId);
+    return job;
+  }
+
+  async getDownloadUrl(
+    userId: string,
+    jobId: string,
+  ): Promise<{ url: string; expiresInSeconds: number }> {
+    const job = await this.findOwnedJob(userId, jobId);
+
+    if (job.status !== JobStatus.done) {
+      throw new BadRequestException("Job is not ready for download.");
+    }
+
+    if (!job.generatedObjectKey) {
+      throw new UnprocessableEntityException(
+        "Generated object key is missing for this job.",
+      );
+    }
+
+    const expiresInSeconds = this.configService.get<number>(
+      "PACI_DOCUMENTS_URL_EXPIRES_IN",
+      900,
+    );
+
+    return {
+      url: await this.s3Service.createSignedDownloadUrl(
+        job.generatedObjectKey,
+        expiresInSeconds,
+      ),
+      expiresInSeconds,
+    };
+  }
+
+  private async findOwnedJob(userId: string, jobId: string): Promise<Job> {
+    const job = await this.prismaService.job.findFirst({
+      where: { id: jobId, userId },
+    });
+
+    if (!job) {
+      throw new NotFoundException("Job not found.");
+    }
+
+    return job;
+  }
+
+  private resolvePaciPayload(
+    paciJson: string | undefined,
+    paciFile: UploadedFile | undefined,
+  ): {
+    body: Buffer;
+    contentType: string;
+    fileName: string;
+    objectKey: string;
+    inputSource: JobInputSource;
+  } {
+    if (paciJson && paciFile) {
+      throw new BadRequestException(
+        "Send either paciJson or paciFile, not both.",
+      );
+    }
+
+    if (paciJson) {
+      let parsed: unknown;
+
+      try {
+        parsed = JSON.parse(paciJson);
+      } catch {
+        throw new BadRequestException("paciJson must be valid JSON.");
+      }
+
+      return {
+        body: Buffer.from(JSON.stringify(parsed, null, 2), "utf8"),
+        contentType: "application/json",
+        fileName: "paci.json",
+        objectKey: "paci/paci.json",
+        inputSource: JobInputSource.json_form,
+      };
+    }
+
+    if (!paciFile) {
+      throw new BadRequestException(
+        "Either paciJson or paciFile is required.",
+      );
+    }
+
+    this.assertAllowedDocument(
+      paciFile.originalname,
+      paciFile.mimetype,
+      "PACI file",
+    );
+
+    return {
+      body: paciFile.buffer,
+      contentType: this.normalizeContentType(paciFile.mimetype),
+      fileName: paciFile.originalname,
+      objectKey: `paci/${this.sanitizeFileName(paciFile.originalname)}`,
+      inputSource: JobInputSource.uploaded_file,
+    };
+  }
+
+  private resolveDocumentPayload(
+    file: UploadedFile,
+    fieldName: string,
+  ): {
+    body: Buffer;
+    contentType: string;
+    fileName: string;
+    objectKey: string;
+  } {
+    this.assertAllowedDocument(file.originalname, file.mimetype, fieldName);
+
+    return {
+      body: file.buffer,
+      contentType: this.normalizeContentType(file.mimetype),
+      fileName: file.originalname,
+      objectKey: `planning/${this.sanitizeFileName(file.originalname)}`,
+    };
+  }
+
+  private assertAllowedDocument(
+    fileName: string,
+    mimeType: string,
+    fieldName: string,
+  ): void {
+    const normalizedMimeType = this.normalizeContentType(mimeType);
+    const normalizedFileName = fileName.toLowerCase();
+    const isPdf =
+      normalizedMimeType === "application/pdf" || normalizedFileName.endsWith(".pdf");
+    const isDocx =
+      normalizedMimeType ===
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      normalizedFileName.endsWith(".docx");
+
+    if (!isPdf && !isDocx) {
+      throw new BadRequestException(
+        `${fieldName} must be a PDF or DOCX document.`,
+      );
+    }
+  }
+
+  private normalizeContentType(contentType: string): string {
+    return contentType.toLowerCase();
+  }
+
+  private sanitizeFileName(fileName: string): string {
+    return fileName.replace(/[^a-zA-Z0-9_.-]/g, "_");
+  }
+
+  private prefixedKey(jobId: string, objectKey: string): string {
+    return `jobs/${jobId}/${objectKey}`;
+  }
+}
