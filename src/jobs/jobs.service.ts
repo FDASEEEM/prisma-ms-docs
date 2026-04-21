@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Job, JobInputSource, JobStatus } from "@prisma/client";
+import { DynamoService } from "../infrastructure/dynamo/dynamo.service";
 import { PrismaService } from "../infrastructure/prisma/prisma.service";
 import { S3Service } from "../infrastructure/storage/s3.service";
 import { ListJobsQueryDto } from "./dto/list-jobs-query.dto";
@@ -27,6 +28,7 @@ export class JobsService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly s3Service: S3Service,
+    private readonly dynamoService: DynamoService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -35,11 +37,7 @@ export class JobsService {
     dto: UploadJobDto,
     files: JobUploadFiles,
   ): Promise<{ jobId: string; status: JobStatus }> {
-    const prompt = dto.prompt.trim();
-
-    if (!prompt) {
-      throw new BadRequestException("Prompt is required.");
-    }
+    const prompt = dto.prompt?.trim() ?? "";
 
     const planningFile = files.planningFile?.[0];
     const paciFile = files.paciFile?.[0];
@@ -69,15 +67,22 @@ export class JobsService {
       },
     });
 
+    const paciS3Key = this.prefixedKey(job.id, paciPayload.objectKey);
+    const materialS3Key = this.prefixedKey(job.id, planningPayload.objectKey);
+
     try {
+      // DynamoDB must exist before S3 uploads — the Lambda fires on the first PUT
+      // and needs to find the session record already in DynamoDB.
+      await this.dynamoService.createJobSession(job.id, paciS3Key, materialS3Key, prompt);
+
       await this.s3Service.uploadObject({
-        key: this.prefixedKey(job.id, paciPayload.objectKey),
+        key: paciS3Key,
         body: paciPayload.body,
         contentType: paciPayload.contentType,
       });
 
       await this.s3Service.uploadObject({
-        key: this.prefixedKey(job.id, planningPayload.objectKey),
+        key: materialS3Key,
         body: planningPayload.body,
         contentType: planningPayload.contentType,
       });
@@ -216,7 +221,7 @@ export class JobsService {
         body: Buffer.from(JSON.stringify(parsed, null, 2), "utf8"),
         contentType: "application/json",
         fileName: "paci.json",
-        objectKey: "paci/paci.json",
+        objectKey: "paci.json",
         inputSource: JobInputSource.json_form,
       };
     }
@@ -233,11 +238,12 @@ export class JobsService {
       "PACI file",
     );
 
+    const ext = this.getExtension(paciFile.originalname);
     return {
       body: paciFile.buffer,
       contentType: this.normalizeContentType(paciFile.mimetype),
       fileName: paciFile.originalname,
-      objectKey: `paci/${this.sanitizeFileName(paciFile.originalname)}`,
+      objectKey: `paci${ext}`,
       inputSource: JobInputSource.uploaded_file,
     };
   }
@@ -253,11 +259,12 @@ export class JobsService {
   } {
     this.assertAllowedDocument(file.originalname, file.mimetype, fieldName);
 
+    const ext = this.getExtension(file.originalname);
     return {
       body: file.buffer,
       contentType: this.normalizeContentType(file.mimetype),
       fileName: file.originalname,
-      objectKey: `planning/${this.sanitizeFileName(file.originalname)}`,
+      objectKey: `material${ext}`,
     };
   }
 
@@ -284,6 +291,13 @@ export class JobsService {
 
   private normalizeContentType(contentType: string): string {
     return contentType.toLowerCase();
+  }
+
+  private getExtension(fileName: string): string {
+    const lower = fileName.toLowerCase();
+    if (lower.endsWith(".pdf")) return ".pdf";
+    if (lower.endsWith(".docx")) return ".docx";
+    return ".pdf";
   }
 
   private sanitizeFileName(fileName: string): string {
