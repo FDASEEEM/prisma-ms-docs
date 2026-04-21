@@ -9,7 +9,9 @@ import {
 } from "@nestjs/common";
 import {
   ApiBody,
+  ApiBadRequestResponse,
   ApiConsumes,
+  ApiCreatedResponse,
   ApiOperation,
   ApiResponse,
   ApiTags,
@@ -32,7 +34,7 @@ export class ChatController {
   @Post("start")
   @HttpCode(201)
   @ApiConsumes("multipart/form-data")
-  @ApiOperation({ summary: "Iniciar sesión de chat PACI" })
+  @ApiOperation({ summary: "Iniciar sesión de chat PACI con archivos" })
   @ApiBody({
     schema: {
       type: "object",
@@ -62,6 +64,21 @@ export class ChatController {
       },
     ),
   )
+  @ApiCreatedResponse({
+    description: "Sesión creada correctamente.",
+    schema: {
+      type: "object",
+      properties: {
+        session_id: {
+          type: "string",
+          example: "259147af-053d-4e5b-8ac4-d50e8a0fc786",
+        },
+      },
+    },
+  })
+  @ApiBadRequestResponse({
+    description: "Faltan archivos o el payload multipart es inválido.",
+  })
   @ApiResponse({ status: 201, description: "Sesión creada correctamente." })
   async startChat(
     @UploadedFiles()

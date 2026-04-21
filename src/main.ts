@@ -19,10 +19,11 @@ async function bootstrap(): Promise<void> {
   const config = new DocumentBuilder()
     .setTitle("PRISMA Docs Service")
     .setDescription(
-      "Microservicio de documentos, jobs PACI y entrega de URLs firmadas.",
+      "Microservicio de documentos, chat PACI, jobs y entrega de URLs firmadas.",
     )
     .setVersion("1.0.0")
     .addBearerAuth()
+    .addServer("/api")
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
