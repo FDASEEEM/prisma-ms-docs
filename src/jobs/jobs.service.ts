@@ -73,7 +73,13 @@ export class JobsService {
     try {
       // DynamoDB must exist before S3 uploads — the Lambda fires on the first PUT
       // and needs to find the session record already in DynamoDB.
-      await this.dynamoService.createJobSession(job.id, paciS3Key, materialS3Key, prompt);
+      await this.dynamoService.createJobSession(
+        job.id,
+        userId,
+        paciS3Key,
+        materialS3Key,
+        prompt,
+      );
 
       await this.s3Service.uploadObject({
         key: paciS3Key,
@@ -94,7 +100,9 @@ export class JobsService {
         data: {
           status: JobStatus.error,
           errorMessage:
-            error instanceof Error ? error.message : "Error uploading files to S3.",
+            error instanceof Error
+              ? error.message
+              : "Error uploading files to S3.",
         },
       });
 
@@ -227,9 +235,7 @@ export class JobsService {
     }
 
     if (!paciFile) {
-      throw new BadRequestException(
-        "Either paciJson or paciFile is required.",
-      );
+      throw new BadRequestException("Either paciJson or paciFile is required.");
     }
 
     this.assertAllowedDocument(
@@ -276,7 +282,8 @@ export class JobsService {
     const normalizedMimeType = this.normalizeContentType(mimeType);
     const normalizedFileName = fileName.toLowerCase();
     const isPdf =
-      normalizedMimeType === "application/pdf" || normalizedFileName.endsWith(".pdf");
+      normalizedMimeType === "application/pdf" ||
+      normalizedFileName.endsWith(".pdf");
     const isDocx =
       normalizedMimeType ===
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
