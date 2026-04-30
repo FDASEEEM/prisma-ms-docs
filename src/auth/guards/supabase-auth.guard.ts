@@ -2,14 +2,24 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 import { Request } from "express";
-import { SupabaseService } from "../../infrastructure/supabase/supabase.service";
 
 @Injectable()
 export class SupabaseAuthGuard implements CanActivate {
-  constructor(private readonly supabaseService: SupabaseService) {}
+  private readonly logger = new Logger(SupabaseAuthGuard.name);
+  private readonly jwks: ReturnType<typeof createRemoteJWKSet>;
+
+  constructor(private readonly configService: ConfigService) {
+    const supabaseUrl = this.configService.getOrThrow<string>("SUPABASE_URL");
+    this.jwks = createRemoteJWKSet(
+      new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`),
+    );
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context
@@ -27,7 +37,19 @@ export class SupabaseAuthGuard implements CanActivate {
       throw new UnauthorizedException("Invalid Authorization header.");
     }
 
-    request.user = await this.supabaseService.getUser(token);
-    return true;
+    try {
+      const { payload } = await jwtVerify(token, this.jwks, {
+        audience: "authenticated",
+      });
+      request.user = {
+        id: payload.sub,
+        email: payload["email"],
+        role: payload["role"],
+      };
+      return true;
+    } catch (err) {
+      this.logger.error(`JWT verification failed: ${(err as Error).message}`);
+      throw new UnauthorizedException("Invalid or expired token.");
+    }
   }
 }
