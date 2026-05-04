@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
@@ -25,6 +26,8 @@ type JobUploadFiles = {
 
 @Injectable()
 export class JobsService {
+  private readonly logger = new Logger(JobsService.name);
+
   constructor(
     private readonly prismaService: PrismaService,
     private readonly s3Service: S3Service,
@@ -95,6 +98,11 @@ export class JobsService {
 
       return { jobId: job.id, status: JobStatus.pending };
     } catch (error: unknown) {
+      this.logger.error(
+        `createUploadJob failed for job ${job.id}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+
       await this.prismaService.job.update({
         where: { id: job.id },
         data: {
