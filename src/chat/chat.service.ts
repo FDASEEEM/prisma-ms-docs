@@ -41,10 +41,11 @@ export class ChatService {
     const paciFileName = input.paciFile.originalname.toLowerCase();
     const materialFileName = input.materialFile.originalname.toLowerCase();
 
-    this.assertPdfFile(input.paciFile, "paci_file");
+    this.assertPdfOrDocxFile(input.paciFile, "paci_file");
     this.assertDocxFile(input.materialFile, "material_file");
 
-    const paciKey = `jobs/${sessionId}/paci.pdf`;
+    const paciExt = paciFileName.endsWith(".docx") ? ".docx" : ".pdf";
+    const paciKey = `jobs/${sessionId}/paci${paciExt}`;
     const materialKey = `jobs/${sessionId}/material.docx`;
 
     await this.createSessionRecord(sessionId, {
@@ -83,13 +84,17 @@ export class ChatService {
     }
   }
 
-  private assertPdfFile(file: UploadedFile, fieldName: string): void {
+  private assertPdfOrDocxFile(file: UploadedFile, fieldName: string): void {
+    const name = file.originalname.toLowerCase();
+    const mime = file.mimetype.toLowerCase();
     const isPdf =
-      file.mimetype.toLowerCase() === "application/pdf" ||
-      file.originalname.toLowerCase().endsWith(".pdf");
+      mime === "application/pdf" || name.endsWith(".pdf");
+    const isDocx =
+      mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      name.endsWith(".docx");
 
-    if (!isPdf) {
-      throw new BadRequestException(`${fieldName} must be a PDF file.`);
+    if (!isPdf && !isDocx) {
+      throw new BadRequestException(`${fieldName} must be a PDF or DOCX file.`);
     }
   }
 

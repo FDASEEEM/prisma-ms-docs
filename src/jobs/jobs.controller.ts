@@ -105,6 +105,17 @@ export class JobsController {
   }
 
   @UseGuards(SupabaseAuthGuard)
+  @Get("history")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Historial de sesiones del docente (desde DynamoDB)" })
+  @ApiResponse({ status: 200, description: "Historial obtenido correctamente." })
+  async getHistory(@Req() request: RequestWithUser) {
+    const user = request.user;
+    if (!user?.id) throw new BadRequestException("Authenticated user is required.");
+    return this.jobsService.getHistoryByUser(user.id);
+  }
+
+  @UseGuards(SupabaseAuthGuard)
   @Get(":id")
   @ApiBearerAuth()
   @ApiOperation({ summary: "Estado actual de un job" })

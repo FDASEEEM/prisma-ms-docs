@@ -1,6 +1,16 @@
 import { Injectable, InternalServerErrorException, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { ConditionalCheckFailedException, DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
+import { ConditionalCheckFailedException, DynamoDBClient, PutItemCommand, ScanCommand } from "@aws-sdk/client-dynamodb";
+
+export interface SessionSummary {
+  sessionId: string;
+  phase: string;
+  workflowStatus: string | null;
+  prompt: string;
+  createdAt: string;
+  docxS3Key: string | null;
+  error: string | null;
+}
 
 @Injectable()
 export class DynamoService {
@@ -66,6 +76,46 @@ export class DynamoService {
       throw new InternalServerErrorException(
         error instanceof Error ? error.message : "Error writing session to DynamoDB.",
       );
+    }
+  }
+
+  async listSessionsByUser(userId: string): Promise<SessionSummary[]> {
+    const table =
+      this.configService.get<string>("DYNAMO_TABLE") ??
+      this.configService.get<string>("CHAT_SESSIONS_TABLE");
+
+    if (!table) {
+      this.logger.warn("DYNAMO_TABLE not set — returning empty history");
+      return [];
+    }
+
+    try {
+      const result = await this.getClient().send(
+        new ScanCommand({
+          TableName: table,
+          FilterExpression: "user_id = :uid",
+          ExpressionAttributeValues: { ":uid": { S: userId } },
+          ProjectionExpression:
+            "session_id, #ph, workflow_status, prompt, created_at, docx_s3_key, #er",
+          ExpressionAttributeNames: { "#ph": "phase", "#er": "error" },
+        }),
+      );
+
+      return (result.Items ?? [])
+        .map((item) => ({
+          sessionId:      item.session_id?.S ?? "",
+          phase:          item["#ph"]?.S ?? item.phase?.S ?? "running",
+          workflowStatus: item.workflow_status?.S || null,
+          prompt:         item.prompt?.S ?? "",
+          createdAt:      item.created_at?.S ?? "",
+          docxS3Key:      item.docx_s3_key?.S || null,
+          error:          (item["#er"]?.S ?? item.error?.S) || null,
+        }))
+        .filter((s) => s.sessionId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    } catch (err) {
+      this.logger.error("DynamoDB scan failed", err instanceof Error ? err.stack : String(err));
+      return [];
     }
   }
 

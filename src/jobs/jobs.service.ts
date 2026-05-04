@@ -7,7 +7,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Job, JobInputSource, JobStatus } from "@prisma/client";
-import { DynamoService } from "../infrastructure/dynamo/dynamo.service";
+import { DynamoService, SessionSummary } from "../infrastructure/dynamo/dynamo.service";
 import { PrismaService } from "../infrastructure/prisma/prisma.service";
 import { S3Service } from "../infrastructure/storage/s3.service";
 import { ListJobsQueryDto } from "./dto/list-jobs-query.dto";
@@ -159,6 +159,10 @@ export class JobsService {
     ]);
 
     return { items: jobs, page, limit, total };
+  }
+
+  async getHistoryByUser(userId: string): Promise<SessionSummary[]> {
+    return this.dynamoService.listSessionsByUser(userId);
   }
 
   async findJobStatus(userId: string, jobId: string): Promise<Job> {
