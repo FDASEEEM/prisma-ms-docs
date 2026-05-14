@@ -8,6 +8,11 @@ import { JobsController } from "../src/jobs/jobs.controller";
 import { JobsService } from "../src/jobs/jobs.service";
 import { SupabaseAuthGuard } from "../src/auth/guards/supabase-auth.guard";
 
+jest.mock("jose", () => ({
+  createRemoteJWKSet: jest.fn(() => "jwks"),
+  jwtVerify: jest.fn(),
+}));
+
 class TestSupabaseAuthGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<{ user?: { id: string } }>();
@@ -117,7 +122,6 @@ describe("App e2e", () => {
 
     const response = await request(app.getHttpServer())
       .post("/api/jobs/upload")
-      .set("Authorization", "Bearer test-token")
       .field("prompt", "preparar clase")
       .field("paciJson", JSON.stringify({ topic: "lectura" }))
       .attach("planningFile", Buffer.from("planning pdf"), "planning.pdf")
@@ -164,7 +168,6 @@ describe("App e2e", () => {
 
     await request(app.getHttpServer())
       .get("/api/jobs?page=1&limit=10")
-      .set("Authorization", "Bearer test-token")
       .expect(200)
       .expect({
         items: [
@@ -212,7 +215,6 @@ describe("App e2e", () => {
 
     const response = await request(app.getHttpServer())
       .get("/api/jobs/33333333-3333-3333-3333-333333333333")
-      .set("Authorization", "Bearer test-token")
       .expect(200);
 
     expect(response.body.id).toBe("33333333-3333-3333-3333-333333333333");
@@ -232,7 +234,6 @@ describe("App e2e", () => {
 
     await request(app.getHttpServer())
       .get("/api/jobs/33333333-3333-3333-3333-333333333333/download")
-      .set("Authorization", "Bearer test-token")
       .expect(200)
       .expect({
         url: "https://signed.example/download",
@@ -248,7 +249,6 @@ describe("App e2e", () => {
   it("rejects invalid job ids before reaching the service", async () => {
     await request(app.getHttpServer())
       .get("/api/jobs/not-a-uuid")
-      .set("Authorization", "Bearer test-token")
       .expect(400);
 
     expect(jobsServiceMock.findJobStatus).not.toHaveBeenCalled();

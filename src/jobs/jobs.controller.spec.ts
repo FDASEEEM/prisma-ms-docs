@@ -5,6 +5,11 @@ import { SupabaseService } from "../infrastructure/supabase/supabase.service";
 import { JobsController } from "./jobs.controller";
 import { JobsService } from "./jobs.service";
 
+jest.mock("jose", () => ({
+  createRemoteJWKSet: jest.fn(() => "jwks"),
+  jwtVerify: jest.fn(),
+}));
+
 describe("JobsController", () => {
   const jobsServiceMock = {
     createUploadJob: jest.fn(),
@@ -26,12 +31,11 @@ describe("JobsController", () => {
       providers: [
         { provide: JobsService, useValue: jobsServiceMock },
         { provide: SupabaseService, useValue: { getUser: jest.fn() } },
-        {
-          provide: SupabaseAuthGuard,
-          useValue: { canActivate: jest.fn(() => true) },
-        },
       ],
-    }).compile();
+    })
+      .overrideGuard(SupabaseAuthGuard)
+      .useValue({ canActivate: jest.fn(() => true) })
+      .compile();
 
     controller = moduleRef.get(JobsController);
   });
