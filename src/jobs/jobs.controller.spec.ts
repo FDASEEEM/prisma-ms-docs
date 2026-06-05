@@ -1,7 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { SupabaseAuthGuard } from "../auth/guards/supabase-auth.guard";
-import { SupabaseService } from "../infrastructure/supabase/supabase.service";
 import { JobsController } from "./jobs.controller";
 import { JobsService } from "./jobs.service";
 
@@ -25,7 +24,6 @@ describe("JobsController", () => {
       controllers: [JobsController],
       providers: [
         { provide: JobsService, useValue: jobsServiceMock },
-        { provide: SupabaseService, useValue: { getUser: jest.fn() } },
         {
           provide: SupabaseAuthGuard,
           useValue: { canActivate: jest.fn(() => true) },
