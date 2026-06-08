@@ -4,10 +4,13 @@ import {
   Controller,
   HttpCode,
   Post,
+  Req,
   UploadedFiles,
+  UseGuards,
   UseInterceptors,
 } from "@nestjs/common";
 import {
+  ApiBearerAuth,
   ApiBody,
   ApiBadRequestResponse,
   ApiConsumes,
@@ -17,8 +20,10 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import { FileFieldsInterceptor } from "@nestjs/platform-express";
+import { Request } from "express";
 import { StartChatDto } from "./dto/start-chat.dto";
 import { ChatService } from "./chat.service";
+import { SupabaseAuthGuard } from "../auth/guards/supabase-auth.guard";
 
 type UploadedFile = {
   originalname: string;
@@ -26,13 +31,17 @@ type UploadedFile = {
   buffer: Buffer;
 };
 
+type RequestWithUser = Request & { user?: { id?: string } };
+
 @ApiTags("chat")
 @Controller("chat")
+@UseGuards(SupabaseAuthGuard)
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
   @Post("start")
   @HttpCode(201)
+  @ApiBearerAuth()
   @ApiConsumes("multipart/form-data")
   @ApiOperation({ summary: "Iniciar sesión de chat PACI con archivos" })
   @ApiBody({
@@ -81,6 +90,7 @@ export class ChatController {
   })
   @ApiResponse({ status: 201, description: "Sesión creada correctamente." })
   async startChat(
+    @Req() request: RequestWithUser,
     @UploadedFiles()
     files: {
       paci_file?: UploadedFile[];
@@ -88,6 +98,11 @@ export class ChatController {
     },
     @Body() dto: StartChatDto,
   ): Promise<{ session_id: string }> {
+    const user = request.user;
+    if (!user?.id) {
+      throw new BadRequestException("Authenticated user is required.");
+    }
+
     const paciFile = files.paci_file?.[0];
     const materialFile = files.material_file?.[0];
 
@@ -96,6 +111,7 @@ export class ChatController {
     }
 
     return this.chatService.startChat({
+      userId: user.id,
       paciFile,
       materialFile,
       prompt: dto.prompt ?? "",

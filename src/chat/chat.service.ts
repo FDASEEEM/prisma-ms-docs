@@ -18,6 +18,7 @@ type UploadedFile = {
 };
 
 type StartChatInput = {
+  userId: string;
   paciFile: UploadedFile;
   materialFile: UploadedFile;
   prompt: string;
@@ -49,6 +50,7 @@ export class ChatService {
     const materialKey = `jobs/${sessionId}/material.docx`;
 
     await this.createSessionRecord(sessionId, {
+      userId: input.userId,
       phase: "running",
       prompt: input.prompt,
       schoolId,
@@ -126,6 +128,7 @@ export class ChatService {
   private async createSessionRecord(
     sessionId: string,
     payload: {
+      userId: string;
       phase: "running";
       prompt: string;
       schoolId: string;
@@ -150,6 +153,7 @@ export class ChatService {
         TableName: tableName,
         Item: {
           session_id: { S: sessionId },
+          user_id: { S: payload.userId },
           phase: { S: payload.phase },
           prompt: { S: payload.prompt ?? "" },
           school_id: { S: payload.schoolId },
