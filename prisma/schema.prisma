@@ -1,10 +1,12 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  schemas  = ["jobs"]
 }
 
 enum JobStatus {
@@ -12,11 +14,15 @@ enum JobStatus {
   processing
   done
   error
+
+  @@schema("jobs")
 }
 
 enum JobInputSource {
   uploaded_file
   json_form
+
+  @@schema("jobs")
 }
 
 model Job {
@@ -40,5 +46,6 @@ model Job {
 
   @@index([userId, createdAt])
   @@index([status])
+  @@schema("jobs")
   @@map("jobs")
 }
