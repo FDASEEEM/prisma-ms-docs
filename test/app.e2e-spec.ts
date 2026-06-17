@@ -91,6 +91,7 @@ describe("App e2e", () => {
 
     expect(response.body).toEqual({ session_id: "session-123" });
     expect(chatServiceMock.startChat).toHaveBeenCalledWith({
+      userId: "teacher-1",
       paciFile: expect.objectContaining({
         originalname: "paci.pdf",
         mimetype: "application/pdf",
