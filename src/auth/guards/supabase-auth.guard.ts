@@ -41,10 +41,14 @@ export class SupabaseAuthGuard implements CanActivate {
       const { payload } = await jwtVerify(token, this.jwks, {
         audience: "authenticated",
       });
+      const appMetadata = (payload["app_metadata"] ?? {}) as Record<string, unknown>;
       request.user = {
         id: payload.sub,
         email: payload["email"],
         role: payload["role"],
+        appRole: typeof appMetadata["role"] === "string" ? appMetadata["role"] : undefined,
+        colegioId:
+          typeof appMetadata["colegioId"] === "string" ? appMetadata["colegioId"] : null,
       };
       return true;
     } catch (err) {

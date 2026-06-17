@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   ParseUUIDPipe,
@@ -22,10 +23,14 @@ import {
 } from "@nestjs/swagger";
 import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import { Request } from "express";
+import { Roles } from "../auth/decorators/roles.decorator";
+import { RolesGuard } from "../auth/guards/roles.guard";
 import { SupabaseAuthGuard } from "../auth/guards/supabase-auth.guard";
 import { ListJobsQueryDto } from "./dto/list-jobs-query.dto";
 import { UploadJobDto } from "./dto/upload-job.dto";
 import { JobsService } from "./jobs.service";
+
+const ADMIN_ROLES = ["ADMIN", "SUPERADMIN"];
 
 type UploadedFile = {
   originalname: string;
@@ -33,7 +38,9 @@ type UploadedFile = {
   buffer: Buffer;
 };
 
-type RequestWithUser = Request & { user?: { id?: string; colegioId?: string | null } };
+type RequestWithUser = Request & {
+  user?: { id?: string; role?: string; colegioId?: string | null };
+};
 
 @ApiTags("jobs")
 @Controller("jobs")
@@ -89,11 +96,13 @@ export class JobsController {
     return this.jobsService.createUploadJob(user.id, dto, files, user.colegioId);
   }
 
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles(...ADMIN_ROLES)
   @Get()
   @ApiBearerAuth()
-  @ApiOperation({ summary: "Historial paginado de jobs del docente" })
+  @ApiOperation({ summary: "Historial paginado de jobs (solo ADMIN/SUPERADMIN)" })
   @ApiResponse({ status: 200, description: "Historial obtenido correctamente." })
+  @ApiResponse({ status: 403, description: "Forbidden - requiere rol ADMIN o SUPERADMIN." })
   async findAll(@Req() request: RequestWithUser, @Query() query: ListJobsQueryDto) {
     const user = request.user;
 
@@ -151,12 +160,26 @@ export class JobsController {
     return this.jobsService.getDownloadUrl(user.id, id);
   }
 
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(SupabaseAuthGuard, RolesGuard)
+  @Roles(...ADMIN_ROLES)
   @Get("colegio/:colegioId/stats")
   @ApiBearerAuth()
-  @ApiOperation({ summary: "Estadísticas de jobs por colegio" })
+  @ApiOperation({ summary: "Estadísticas de jobs por colegio (solo ADMIN/SUPERADMIN)" })
   @ApiResponse({ status: 200, description: "Estadísticas obtenidas correctamente." })
-  async getColegioStats(@Param("colegioId", new ParseUUIDPipe()) colegioId: string) {
+  @ApiResponse({ status: 403, description: "Forbidden - requiere rol ADMIN o SUPERADMIN." })
+  async getColegioStats(
+    @Req() request: RequestWithUser,
+    @Param("colegioId", new ParseUUIDPipe()) colegioId: string,
+  ) {
+    const user = request.user;
+    const userRole = user?.role;
+
+    if (userRole === "ADMIN" && user?.colegioId !== colegioId) {
+      throw new ForbiddenException(
+        "ADMIN only puede consultar estadísticas de su propio colegio.",
+      );
+    }
+
     return this.jobsService.getStatsByColegio(colegioId);
   }
 
