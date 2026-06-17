@@ -2,6 +2,12 @@ import { BadRequestException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { ChatController } from "./chat.controller";
 import { ChatService } from "./chat.service";
+import { SupabaseAuthGuard } from "../auth/guards/supabase-auth.guard";
+
+jest.mock("jose", () => ({
+  createRemoteJWKSet: jest.fn(() => "jwks"),
+  jwtVerify: jest.fn(),
+}));
 
 describe("ChatController", () => {
   const chatServiceMock = {
@@ -16,7 +22,10 @@ describe("ChatController", () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [ChatController],
       providers: [{ provide: ChatService, useValue: chatServiceMock }],
-    }).compile();
+    })
+      .overrideGuard(SupabaseAuthGuard)
+      .useValue({ canActivate: jest.fn(() => true) })
+      .compile();
 
     controller = moduleRef.get(ChatController);
   });
@@ -41,6 +50,7 @@ describe("ChatController", () => {
 
     await expect(
       controller.startChat(
+        { user: { id: "teacher-1" } } as any,
         {
           paci_file: [paciFile],
           material_file: [materialFile],
@@ -53,6 +63,7 @@ describe("ChatController", () => {
     ).resolves.toEqual({ session_id: "session-123" });
 
     expect(chatServiceMock.startChat).toHaveBeenCalledWith({
+      userId: "teacher-1",
       paciFile,
       materialFile,
       prompt: "resume esto",
@@ -61,7 +72,7 @@ describe("ChatController", () => {
   });
 
   it("rejects requests that omit required files", async () => {
-    await expect(controller.startChat({}, {})).rejects.toBeInstanceOf(
+    await expect(controller.startChat({ user: { id: "teacher-1" } } as any, {}, {})).rejects.toBeInstanceOf(
       BadRequestException,
     );
 

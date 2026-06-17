@@ -31,7 +31,7 @@ type UploadedFile = {
   buffer: Buffer;
 };
 
-type RequestWithUser = Request & { user?: { id?: string } };
+type RequestWithUser = Request & { user?: { id?: string; colegioId?: string | null } };
 
 @ApiTags("chat")
 @Controller("chat")
@@ -115,7 +115,7 @@ export class ChatController {
       paciFile,
       materialFile,
       prompt: dto.prompt ?? "",
-      schoolId: dto.school_id ?? "colegio_demo",
+      schoolId: dto.school_id ?? user.colegioId ?? "colegio_demo",
     });
   }
 }

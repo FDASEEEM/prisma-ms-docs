@@ -43,6 +43,7 @@ describe("ChatService additional cases", () => {
     s3ServiceMock.uploadObject.mockResolvedValue({ bucket: "b", key: "k" });
 
     await service.startChat({
+      userId: "teacher-1",
       paciFile: {
         originalname: "paci.DOCX",
         mimetype:
@@ -76,6 +77,7 @@ describe("ChatService additional cases", () => {
     s3ServiceMock.uploadObject.mockResolvedValue({ bucket: "b", key: "k" });
 
     await service.startChat({
+      userId: "teacher-1",
       paciFile: {
         originalname: "paci.pdf",
         mimetype: "",
@@ -102,6 +104,7 @@ describe("ChatService additional cases", () => {
   it("rejects non-docx material files", async () => {
     await expect(
       service.startChat({
+        userId: "teacher-1",
         paciFile: {
           originalname: "paci.pdf",
           mimetype: "application/pdf",

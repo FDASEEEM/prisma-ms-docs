@@ -29,7 +29,6 @@ describe("JobsController", () => {
       controllers: [JobsController],
       providers: [
         { provide: JobsService, useValue: jobsServiceMock },
-        { provide: SupabaseService, useValue: { getUser: jest.fn() } },
       ],
     })
       .overrideGuard(SupabaseAuthGuard)
@@ -78,6 +77,7 @@ describe("JobsController", () => {
           },
         ],
       },
+      undefined,
     );
   });
 

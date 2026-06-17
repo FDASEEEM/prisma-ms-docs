@@ -49,6 +49,7 @@ describe("ChatService", () => {
     });
 
     const result = await service.startChat({
+      userId: "teacher-1",
       paciFile: {
         originalname: "paci.PDF",
         mimetype: "application/pdf",
@@ -90,6 +91,7 @@ describe("ChatService", () => {
   it("rejects invalid paci file formats", async () => {
     await expect(
       service.startChat({
+        userId: "teacher-1",
         paciFile: {
           originalname: "paci.txt",
           mimetype: "text/plain",
@@ -114,6 +116,7 @@ describe("ChatService", () => {
 
     await expect(
       service.startChat({
+        userId: "teacher-1",
         paciFile: {
           originalname: "paci.pdf",
           mimetype: "application/pdf",

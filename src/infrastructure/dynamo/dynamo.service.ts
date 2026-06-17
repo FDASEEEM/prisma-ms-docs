@@ -25,6 +25,7 @@ export class DynamoService {
     paciS3Key: string,
     materialS3Key: string,
     prompt: string,
+    schoolId?: string,
   ): Promise<void> {
     const table =
       this.configService.get<string>("DYNAMO_TABLE") ??
@@ -48,7 +49,7 @@ export class DynamoService {
             user_id:         { S: userId },
             phase:           { S: "running" },
             prompt:          { S: prompt },
-            school_id:       { S: "colegio_demo" },
+            school_id:       { S: schoolId || "colegio_demo" },
             paci_s3_key:     { S: paciS3Key },
             material_s3_key: { S: materialS3Key },
             messages:        { S: "[]" },
