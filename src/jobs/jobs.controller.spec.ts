@@ -77,6 +77,7 @@ describe("JobsController", () => {
           },
         ],
       },
+      undefined,
     );
   });
 

@@ -33,7 +33,7 @@ type UploadedFile = {
   buffer: Buffer;
 };
 
-type RequestWithUser = Request & { user?: { id?: string } };
+type RequestWithUser = Request & { user?: { id?: string; colegioId?: string | null } };
 
 @ApiTags("jobs")
 @Controller("jobs")
@@ -86,7 +86,7 @@ export class JobsController {
       throw new BadRequestException("Authenticated user is required.");
     }
 
-    return this.jobsService.createUploadJob(user.id, dto, files);
+    return this.jobsService.createUploadJob(user.id, dto, files, user.colegioId);
   }
 
   @UseGuards(SupabaseAuthGuard)
@@ -149,5 +149,26 @@ export class JobsController {
     }
 
     return this.jobsService.getDownloadUrl(user.id, id);
+  }
+
+  @UseGuards(SupabaseAuthGuard)
+  @Get("colegio/:colegioId/stats")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Estadísticas de jobs por colegio" })
+  @ApiResponse({ status: 200, description: "Estadísticas obtenidas correctamente." })
+  async getColegioStats(@Param("colegioId", new ParseUUIDPipe()) colegioId: string) {
+    return this.jobsService.getStatsByColegio(colegioId);
+  }
+
+  @UseGuards(SupabaseAuthGuard)
+  @Get("colegio/:colegioId/jobs")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Jobs de un colegio específico" })
+  @ApiResponse({ status: 200, description: "Jobs obtenidos correctamente." })
+  async getColegioJobs(
+    @Param("colegioId", new ParseUUIDPipe()) colegioId: string,
+    @Query() query: ListJobsQueryDto,
+  ) {
+    return this.jobsService.getJobsByColegio(colegioId, query);
   }
 }

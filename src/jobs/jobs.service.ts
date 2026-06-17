@@ -39,6 +39,7 @@ export class JobsService {
     userId: string,
     dto: UploadJobDto,
     files: JobUploadFiles,
+    colegioId: string | null = null,
   ): Promise<{ jobId: string; status: JobStatus }> {
     const prompt = dto.prompt?.trim() ?? "";
 
@@ -58,6 +59,7 @@ export class JobsService {
     const job = await this.prismaService.job.create({
       data: {
         userId,
+        colegioId,
         status: JobStatus.pending,
         inputSource: paciPayload.inputSource,
         prompt,
@@ -325,5 +327,66 @@ export class JobsService {
 
   private prefixedKey(jobId: string, objectKey: string): string {
     return `jobs/${jobId}/${objectKey}`;
+  }
+
+  async getStatsByColegio(colegioId: string): Promise<{
+    totalJobs: number;
+    completedJobs: number;
+    failedJobs: number;
+    pendingJobs: number;
+    processingJobs: number;
+  }> {
+    const [totalJobs, completedJobs, failedJobs, pendingJobs, processingJobs] = await Promise.all([
+      this.prismaService.job.count({ where: { colegioId } }),
+      this.prismaService.job.count({ where: { colegioId, status: JobStatus.done } }),
+      this.prismaService.job.count({ where: { colegioId, status: JobStatus.error } }),
+      this.prismaService.job.count({ where: { colegioId, status: JobStatus.pending } }),
+      this.prismaService.job.count({ where: { colegioId, status: JobStatus.processing } }),
+    ]);
+
+    return { totalJobs, completedJobs, failedJobs, pendingJobs, processingJobs };
+  }
+
+  async getJobsByColegio(
+    colegioId: string,
+    query: ListJobsQueryDto,
+  ): Promise<{
+    items: Array<{
+      id: string;
+      userId: string;
+      status: JobStatus;
+      inputSource: JobInputSource;
+      prompt: string;
+      createdAt: Date;
+      updatedAt: Date;
+      errorMessage: string | null;
+    }>;
+    page: number;
+    limit: number;
+    total: number;
+  }> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const [total, jobs] = await Promise.all([
+      this.prismaService.job.count({ where: { colegioId } }),
+      this.prismaService.job.findMany({
+        where: { colegioId },
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          userId: true,
+          status: true,
+          inputSource: true,
+          prompt: true,
+          createdAt: true,
+          updatedAt: true,
+          errorMessage: true,
+        },
+      }),
+    ]);
+
+    return { items: jobs, page, limit, total };
   }
 }

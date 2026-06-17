@@ -146,6 +146,7 @@ describe("App e2e", () => {
           }),
         ]),
       }),
+      undefined,
     );
   });
 
