@@ -36,7 +36,7 @@ describe("SupabaseAuthGuard edge cases", () => {
     } as { headers: { authorization: string }; user?: unknown };
 
     await expect(guard.canActivate(buildContext(request))).resolves.toBe(true);
-    expect(request.user).toEqual({ id: "user-1", email: undefined, role: undefined });
+    expect(request.user).toEqual({ id: "user-1", email: undefined, role: undefined, appRole: undefined, colegioId: null });
   });
 
   it("rejects bearer header without token", async () => {
