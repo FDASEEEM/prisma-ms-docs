@@ -76,6 +76,8 @@ describe("SupabaseAuthGuard", () => {
       id: "user-123",
       email: "user@example.com",
       role: "authenticated",
+      appRole: undefined,
+      colegioId: null,
     });
   });
 

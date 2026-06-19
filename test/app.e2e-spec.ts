@@ -7,6 +7,7 @@ import { ChatService } from "../src/chat/chat.service";
 import { JobsController } from "../src/jobs/jobs.controller";
 import { JobsService } from "../src/jobs/jobs.service";
 import { SupabaseAuthGuard } from "../src/auth/guards/supabase-auth.guard";
+import { RolesGuard } from "../src/auth/guards/roles.guard";
 
 jest.mock("jose", () => ({
   createRemoteJWKSet: jest.fn(() => "jwks"),
@@ -45,6 +46,10 @@ describe("App e2e", () => {
     })
       .overrideGuard(SupabaseAuthGuard)
       .useClass(TestSupabaseAuthGuard)
+      // El endpoint de listado usa también RolesGuard; en e2e lo dejamos pasar
+      // (el control de roles se prueba de forma unitaria en roles.guard.spec).
+      .overrideGuard(RolesGuard)
+      .useValue({ canActivate: () => true })
       .compile();
 
     app = moduleRef.createNestApplication();
