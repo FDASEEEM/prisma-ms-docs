@@ -1,0 +1,53 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["jobs"]
+}
+
+enum JobStatus {
+  pending
+  processing
+  done
+  error
+
+  @@schema("jobs")
+}
+
+enum JobInputSource {
+  uploaded_file
+  json_form
+
+  @@schema("jobs")
+}
+
+model Job {
+  id                  String         @id @default(uuid()) @db.Uuid
+  userId              String         @map("user_id")
+  colegioId           String?        @map("colegio_id") @db.Uuid
+  status              JobStatus      @default(pending)
+  inputSource         JobInputSource @map("input_source")
+  prompt              String         @db.Text
+  paciObjectKey       String         @map("paci_object_key")
+  paciFileName        String?        @map("paci_file_name")
+  paciContentType     String         @map("paci_content_type")
+  planningObjectKey   String         @map("planning_object_key")
+  planningFileName    String         @map("planning_file_name")
+  planningContentType String         @map("planning_content_type")
+  generatedObjectKey  String?        @map("generated_object_key")
+  errorMessage        String?        @map("error_message")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+  startedAt           DateTime?      @map("started_at")
+  completedAt         DateTime?      @map("completed_at")
+
+  @@index([userId, createdAt])
+  @@index([colegioId])
+  @@index([status])
+  @@schema("jobs")
+  @@map("jobs")
+}
