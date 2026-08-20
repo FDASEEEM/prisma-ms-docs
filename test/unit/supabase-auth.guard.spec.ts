@@ -1,19 +1,26 @@
 import { ExecutionContext, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import { SupabaseAuthGuard } from "../../src/auth/guards/supabase-auth.guard";
+import { CognitoAuthGuard } from "../../src/auth/guards/supabase-auth.guard";
 
 jest.mock("jose", () => ({
   createRemoteJWKSet: jest.fn(() => "jwks"),
   jwtVerify: jest.fn(),
 }));
 
-describe("SupabaseAuthGuard", () => {
+describe("CognitoAuthGuard", () => {
   const jwtVerifyMock = jwtVerify as jest.Mock;
   const createRemoteJWKSetMock = createRemoteJWKSet as jest.Mock;
 
   const configServiceMock = {
-    getOrThrow: jest.fn(() => "https://project.supabase.co"),
+    get: jest.fn().mockImplementation((key: string) => {
+      if (key === "COGNITO_REGION") return "us-east-1";
+      return undefined;
+    }),
+    getOrThrow: jest.fn().mockImplementation((key: string) => {
+      if (key === "COGNITO_USER_POOL_ID") return "us-east-1_XXXXXXXXX";
+      throw new Error(`Missing config: ${key}`);
+    }),
   };
 
   const buildContext = (request: Record<string, unknown>): ExecutionContext =>
@@ -28,7 +35,7 @@ describe("SupabaseAuthGuard", () => {
   });
 
   it("throws when the authorization header is missing", async () => {
-    const guard = new SupabaseAuthGuard(
+    const guard = new CognitoAuthGuard(
       configServiceMock as unknown as ConfigService,
     );
     const request = { headers: {} };
@@ -39,7 +46,7 @@ describe("SupabaseAuthGuard", () => {
   });
 
   it("throws when the authorization scheme is invalid", async () => {
-    const guard = new SupabaseAuthGuard(
+    const guard = new CognitoAuthGuard(
       configServiceMock as unknown as ConfigService,
     );
     const request = { headers: { authorization: "Basic token" } };
@@ -54,11 +61,11 @@ describe("SupabaseAuthGuard", () => {
       payload: {
         sub: "user-123",
         email: "user@example.com",
-        role: "authenticated",
+        custom: { role: "ADMIN", colegioId: "colegio-1" },
       },
     });
 
-    const guard = new SupabaseAuthGuard(
+    const guard = new CognitoAuthGuard(
       configServiceMock as unknown as ConfigService,
     );
     const request = { headers: { authorization: "Bearer token-123" } } as {
@@ -70,21 +77,21 @@ describe("SupabaseAuthGuard", () => {
 
     expect(createRemoteJWKSetMock).toHaveBeenCalledTimes(1);
     expect(jwtVerifyMock).toHaveBeenCalledWith("token-123", "jwks", {
-      audience: "authenticated",
+      issuer: "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXXXXX",
     });
     expect(request.user).toEqual({
       id: "user-123",
       email: "user@example.com",
-      role: "authenticated",
-      appRole: undefined,
-      colegioId: null,
+      role: "ADMIN",
+      appRole: "ADMIN",
+      colegioId: "colegio-1",
     });
   });
 
   it("throws when the token verification fails", async () => {
     jwtVerifyMock.mockRejectedValue(new Error("boom"));
 
-    const guard = new SupabaseAuthGuard(
+    const guard = new CognitoAuthGuard(
       configServiceMock as unknown as ConfigService,
     );
     const request = { headers: { authorization: "Bearer bad-token" } };

@@ -10,14 +10,17 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 import { Request } from "express";
 
 @Injectable()
-export class SupabaseAuthGuard implements CanActivate {
-  private readonly logger = new Logger(SupabaseAuthGuard.name);
+export class CognitoAuthGuard implements CanActivate {
+  private readonly logger = new Logger(CognitoAuthGuard.name);
   private readonly jwks: ReturnType<typeof createRemoteJWKSet>;
+  private readonly issuer: string;
 
   constructor(private readonly configService: ConfigService) {
-    const supabaseUrl = this.configService.getOrThrow<string>("SUPABASE_URL");
+    const region = this.configService.get<string>("COGNITO_REGION") || "us-east-1";
+    const userPoolId = this.configService.getOrThrow<string>("COGNITO_USER_POOL_ID");
+    this.issuer = `https://cognito-idp.${region}.amazonaws.com/${userPoolId}`;
     this.jwks = createRemoteJWKSet(
-      new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`),
+      new URL(`${this.issuer}/.well-known/jwks.json`),
     );
   }
 
@@ -38,17 +41,15 @@ export class SupabaseAuthGuard implements CanActivate {
     }
 
     try {
-      const { payload } = await jwtVerify(token, this.jwks, {
-        audience: "authenticated",
-      });
-      const appMetadata = (payload["app_metadata"] ?? {}) as Record<string, unknown>;
+      const { payload } = await jwtVerify(token, this.jwks, { issuer: this.issuer });
+      const custom = (payload["custom"] ?? {}) as Record<string, unknown>;
       request.user = {
         id: payload.sub,
         email: payload["email"],
-        role: payload["role"],
-        appRole: typeof appMetadata["role"] === "string" ? appMetadata["role"] : undefined,
+        role: payload["cognito:roles"] ?? custom["role"],
+        appRole: typeof custom["role"] === "string" ? custom["role"] : undefined,
         colegioId:
-          typeof appMetadata["colegioId"] === "string" ? appMetadata["colegioId"] : null,
+          typeof custom["colegioId"] === "string" ? custom["colegioId"] : null,
       };
       return true;
     } catch (err) {

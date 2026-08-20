@@ -1,17 +1,24 @@
 import { ExecutionContext, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import { SupabaseAuthGuard } from "../../src/auth/guards/supabase-auth.guard";
+import { CognitoAuthGuard } from "../../src/auth/guards/supabase-auth.guard";
 
 jest.mock("jose", () => ({
   createRemoteJWKSet: jest.fn(() => "jwks"),
   jwtVerify: jest.fn(),
 }));
 
-describe("SupabaseAuthGuard edge cases", () => {
+describe("CognitoAuthGuard edge cases", () => {
   const jwtVerifyMock = jwtVerify as jest.Mock;
   const configServiceMock = {
-    getOrThrow: jest.fn(() => "https://project.supabase.co"),
+    get: jest.fn().mockImplementation((key: string) => {
+      if (key === "COGNITO_REGION") return "us-east-1";
+      return undefined;
+    }),
+    getOrThrow: jest.fn().mockImplementation((key: string) => {
+      if (key === "COGNITO_USER_POOL_ID") return "us-east-1_XXXXXXXXX";
+      throw new Error(`Missing config: ${key}`);
+    }),
   };
 
   const buildContext = (request: Record<string, unknown>): ExecutionContext =>
@@ -26,9 +33,9 @@ describe("SupabaseAuthGuard edge cases", () => {
   });
 
   it("accepts Bearer with different casing", async () => {
-    jwtVerifyMock.mockResolvedValue({ payload: { sub: "user-1" } });
+    jwtVerifyMock.mockResolvedValue({ payload: { sub: "user-1", custom: {} } });
 
-    const guard = new SupabaseAuthGuard(
+    const guard = new CognitoAuthGuard(
       configServiceMock as unknown as ConfigService,
     );
     const request = {
@@ -40,7 +47,7 @@ describe("SupabaseAuthGuard edge cases", () => {
   });
 
   it("rejects bearer header without token", async () => {
-    const guard = new SupabaseAuthGuard(
+    const guard = new CognitoAuthGuard(
       configServiceMock as unknown as ConfigService,
     );
 
