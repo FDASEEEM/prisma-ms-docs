@@ -72,13 +72,17 @@ export class S3Service {
       const forcePathStyle =
         this.configService.get<string>("AWS_S3_FORCE_PATH_STYLE") === "true";
 
-      if (!region || !accessKeyId || !secretAccessKey) {
-        throw new Error("AWS environment variables are required for S3 operations.");
+      if (!region) {
+        throw new Error("AWS_REGION is required for S3 operations.");
       }
 
+      // Without explicit keys we fall back to the SDK default credential chain,
+      // which on ECS resolves the task role via the container metadata endpoint.
       this.client = new S3Client({
         region,
-        credentials: { accessKeyId, secretAccessKey },
+        ...(accessKeyId && secretAccessKey
+          ? { credentials: { accessKeyId, secretAccessKey } }
+          : {}),
         ...(endpoint ? { endpoint } : {}),
         forcePathStyle,
       });

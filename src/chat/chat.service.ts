@@ -199,18 +199,19 @@ export class ChatService {
       const secretAccessKey = this.configService.get<string>("AWS_SECRET_ACCESS_KEY");
       const endpoint = this.configService.get<string>("AWS_DYNAMODB_ENDPOINT");
 
-      if (!region || !accessKeyId || !secretAccessKey) {
+      if (!region) {
         throw new InternalServerErrorException(
-          "AWS credentials are required for DynamoDB operations.",
+          "AWS_REGION is required for DynamoDB operations.",
         );
       }
 
+      // Without explicit keys we fall back to the SDK default credential chain,
+      // which on ECS resolves the task role via the container metadata endpoint.
       this.dynamoClient = new DynamoDBClient({
         region,
-        credentials: {
-          accessKeyId,
-          secretAccessKey,
-        },
+        ...(accessKeyId && secretAccessKey
+          ? { credentials: { accessKeyId, secretAccessKey } }
+          : {}),
         ...(endpoint ? { endpoint } : {}),
       });
     }
