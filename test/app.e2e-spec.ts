@@ -6,7 +6,7 @@ import { ChatController } from "../src/chat/chat.controller";
 import { ChatService } from "../src/chat/chat.service";
 import { JobsController } from "../src/jobs/jobs.controller";
 import { JobsService } from "../src/jobs/jobs.service";
-import { CognitoAuthGuard } from "../src/auth/guards/supabase-auth.guard";
+import { CognitoAuthGuard } from "../src/auth/guards/cognito-auth.guard";
 import { RolesGuard } from "../src/auth/guards/roles.guard";
 
 jest.mock("jose", () => ({

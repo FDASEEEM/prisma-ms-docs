@@ -25,7 +25,7 @@ import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import { Request } from "express";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { RolesGuard } from "../auth/guards/roles.guard";
-import { CognitoAuthGuard } from "../auth/guards/supabase-auth.guard";
+import { CognitoAuthGuard } from "../auth/guards/cognito-auth.guard";
 import { ListJobsQueryDto } from "./dto/list-jobs-query.dto";
 import { UploadJobDto } from "./dto/upload-job.dto";
 import { JobsService } from "./jobs.service";
@@ -183,15 +183,27 @@ export class JobsController {
     return this.jobsService.getStatsByColegio(colegioId);
   }
 
-  @UseGuards(CognitoAuthGuard)
+  @UseGuards(CognitoAuthGuard, RolesGuard)
+  @Roles(...ADMIN_ROLES)
   @Get("colegio/:colegioId/jobs")
   @ApiBearerAuth()
-  @ApiOperation({ summary: "Jobs de un colegio específico" })
+  @ApiOperation({ summary: "Jobs de un colegio específico (solo ADMIN/SUPERADMIN)" })
   @ApiResponse({ status: 200, description: "Jobs obtenidos correctamente." })
+  @ApiResponse({ status: 403, description: "Forbidden - requiere rol ADMIN o SUPERADMIN." })
   async getColegioJobs(
+    @Req() request: RequestWithUser,
     @Param("colegioId", new ParseUUIDPipe()) colegioId: string,
     @Query() query: ListJobsQueryDto,
   ) {
+    const user = request.user;
+    const userRole = user?.role;
+
+    if (userRole === "ADMIN" && user?.colegioId !== colegioId) {
+      throw new ForbiddenException(
+        "ADMIN solo puede consultar jobs de su propio colegio.",
+      );
+    }
+
     return this.jobsService.getJobsByColegio(colegioId, query);
   }
 }

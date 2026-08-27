@@ -8,6 +8,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { Request } from "express";
+import { UsersLookupService } from "../users-lookup.service";
 
 @Injectable()
 export class CognitoAuthGuard implements CanActivate {
@@ -15,7 +16,10 @@ export class CognitoAuthGuard implements CanActivate {
   private readonly jwks: ReturnType<typeof createRemoteJWKSet>;
   private readonly issuer: string;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly usersLookup: UsersLookupService,
+  ) {
     const region = this.configService.get<string>("COGNITO_REGION") || "us-east-1";
     const userPoolId = this.configService.getOrThrow<string>("COGNITO_USER_POOL_ID");
     this.issuer = `https://cognito-idp.${region}.amazonaws.com/${userPoolId}`;
@@ -40,21 +44,50 @@ export class CognitoAuthGuard implements CanActivate {
       throw new UnauthorizedException("Invalid Authorization header.");
     }
 
+    let payload: Record<string, unknown>;
     try {
-      const { payload } = await jwtVerify(token, this.jwks, { issuer: this.issuer });
-      const custom = (payload["custom"] ?? {}) as Record<string, unknown>;
-      request.user = {
-        id: payload.sub,
-        email: payload["email"],
-        role: payload["cognito:roles"] ?? custom["role"],
-        appRole: typeof custom["role"] === "string" ? custom["role"] : undefined,
-        colegioId:
-          typeof custom["colegioId"] === "string" ? custom["colegioId"] : null,
-      };
-      return true;
+      ({ payload } = await jwtVerify(token, this.jwks, { issuer: this.issuer }));
     } catch (err) {
       this.logger.error(`JWT verification failed: ${(err as Error).message}`);
       throw new UnauthorizedException("Invalid or expired token.");
     }
+
+    const sub = payload.sub as string;
+
+    // Cognito publica los atributos custom como claims planos (`custom:role`),
+    // no como un objeto anidado. En el access token normalmente NO vienen, así
+    // que si falta el rol lo resolvemos contra ms-users.
+    const claimRole =
+      typeof payload["custom:role"] === "string"
+        ? (payload["custom:role"] as string)
+        : undefined;
+    const claimColegioId =
+      typeof payload["custom:colegioId"] === "string"
+        ? (payload["custom:colegioId"] as string)
+        : undefined;
+
+    let role = claimRole;
+    let colegioId: string | null = claimColegioId ?? null;
+    let email =
+      typeof payload["email"] === "string"
+        ? (payload["email"] as string)
+        : undefined;
+
+    if (!role) {
+      const authz = await this.usersLookup.resolve(sub, token);
+      role = authz.role;
+      colegioId = authz.colegioId;
+      email = email ?? authz.email;
+    }
+
+    request.user = {
+      id: sub,
+      email,
+      role,
+      appRole: role,
+      colegioId,
+    };
+
+    return true;
   }
 }

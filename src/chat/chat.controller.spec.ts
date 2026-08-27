@@ -2,7 +2,7 @@ import { BadRequestException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { ChatController } from "./chat.controller";
 import { ChatService } from "./chat.service";
-import { CognitoAuthGuard } from "../auth/guards/supabase-auth.guard";
+import { CognitoAuthGuard } from "../auth/guards/cognito-auth.guard";
 
 jest.mock("jose", () => ({
   createRemoteJWKSet: jest.fn(() => "jwks"),

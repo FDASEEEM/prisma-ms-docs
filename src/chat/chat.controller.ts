@@ -23,7 +23,7 @@ import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import { Request } from "express";
 import { StartChatDto } from "./dto/start-chat.dto";
 import { ChatService } from "./chat.service";
-import { CognitoAuthGuard } from "../auth/guards/supabase-auth.guard";
+import { CognitoAuthGuard } from "../auth/guards/cognito-auth.guard";
 
 type UploadedFile = {
   originalname: string;

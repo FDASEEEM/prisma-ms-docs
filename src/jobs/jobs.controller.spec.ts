@@ -1,6 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
-import { CognitoAuthGuard } from "../auth/guards/supabase-auth.guard";
+import { CognitoAuthGuard } from "../auth/guards/cognito-auth.guard";
 import { JobsController } from "./jobs.controller";
 import { JobsService } from "./jobs.service";
 

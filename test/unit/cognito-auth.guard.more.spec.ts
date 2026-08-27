@@ -1,7 +1,8 @@
 import { ExecutionContext, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import { CognitoAuthGuard } from "../../src/auth/guards/supabase-auth.guard";
+import { CognitoAuthGuard } from "../../src/auth/guards/cognito-auth.guard";
+import { UsersLookupService } from "../../src/auth/users-lookup.service";
 
 jest.mock("jose", () => ({
   createRemoteJWKSet: jest.fn(() => "jwks"),
@@ -21,6 +22,16 @@ describe("CognitoAuthGuard edge cases", () => {
     }),
   };
 
+  const usersLookupMock = {
+    resolve: jest.fn().mockResolvedValue({ colegioId: null }),
+  };
+
+  const buildGuard = () =>
+    new CognitoAuthGuard(
+      configServiceMock as unknown as ConfigService,
+      usersLookupMock as unknown as UsersLookupService,
+    );
+
   const buildContext = (request: Record<string, unknown>): ExecutionContext =>
     ({
       switchToHttp: () => ({
@@ -30,29 +41,31 @@ describe("CognitoAuthGuard edge cases", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    usersLookupMock.resolve.mockResolvedValue({ colegioId: null });
   });
 
   it("accepts Bearer with different casing", async () => {
-    jwtVerifyMock.mockResolvedValue({ payload: { sub: "user-1", custom: {} } });
+    jwtVerifyMock.mockResolvedValue({ payload: { sub: "user-1" } });
 
-    const guard = new CognitoAuthGuard(
-      configServiceMock as unknown as ConfigService,
-    );
     const request = {
       headers: { authorization: "bEaReR token-1" },
     } as { headers: { authorization: string }; user?: unknown };
 
-    await expect(guard.canActivate(buildContext(request))).resolves.toBe(true);
-    expect(request.user).toEqual({ id: "user-1", email: undefined, role: undefined, appRole: undefined, colegioId: null });
+    await expect(buildGuard().canActivate(buildContext(request))).resolves.toBe(
+      true,
+    );
+    expect(request.user).toEqual({
+      id: "user-1",
+      email: undefined,
+      role: undefined,
+      appRole: undefined,
+      colegioId: null,
+    });
   });
 
   it("rejects bearer header without token", async () => {
-    const guard = new CognitoAuthGuard(
-      configServiceMock as unknown as ConfigService,
-    );
-
     await expect(
-      guard.canActivate(buildContext({ headers: { authorization: "Bearer" } })),
+      buildGuard().canActivate(buildContext({ headers: { authorization: "Bearer" } })),
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 });
